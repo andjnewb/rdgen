@@ -7,7 +7,18 @@ use crossterm::{
 };
 struct Dungeon
 {
+    tree: DungeonTree,
+    homogeneity: f64, //Will be clamped between 0 and 1. Increases the variance for the splitting of sub-dungeons.
+    splits: i64, //How many times the sub-dungeons will be split. Going to high with too small of a dungeon can produce odd results.
+    split_direction: split_dirs, // Split the sub-dungeons horziontally or vertically.
+    
+}
 
+enum split_dirs
+{
+    ALWAYS_VERT,
+    ALWAYS_HORIZONTAL,
+    RANDOM,
 }
 
 #[derive(Debug, Error)]
@@ -21,13 +32,6 @@ pub enum TreeError
 
 }
 
-pub enum coord_alias
-{
-    X1,
-    Y1,
-    X2,
-    Y2,
-}
 
 
 #[derive(Clone, Debug)]
@@ -65,6 +69,8 @@ impl DungeonTree
         }
     }
 
+    //At the given node, split it into two sub-dungeons. If sub-dungeons already exist at the child node locations, they will be over-written.
+    //Be careful with this, as your DungeonTree node vector will continue to increase in size even if it isn't necessary.
     pub fn split(&mut self, vert: bool, node_idx: i32) -> Result<(), TreeError>
     {
         let mut split_pos: i32;
@@ -87,7 +93,8 @@ impl DungeonTree
         }
 
         //Check later for balance
-        split_pos = rand::thread_rng().gen_range(split_range.0 .. split_range.1);
+        split_pos = (split_range.0 + split_range.1) / 2;
+        split_pos = (split_pos as f32 * rand::thread_rng().gen_range(0.25 .. 0.9)) as i32;
 
         
         self.nodes.resize(self.nodes.len() + 2, root_node.clone());
@@ -122,7 +129,7 @@ impl DungeonTree
         Ok(())
     }
 
-    pub fn draw(&self) 
+    pub fn draw_sub_dungeons(&self) 
     {
 
         let mut stdout = io::stdout();
@@ -131,14 +138,14 @@ impl DungeonTree
         
         //Skip drawing the base
         let mut cpy = self.nodes.clone();
-        cpy.remove(0);
+        //cpy.remove(0);
 
         stdout.execute(terminal::Clear(terminal::ClearType::All)).unwrap();
 
-        let mut sub_dung_lbl = 1;
+        let mut sub_dung_lbl = 0;
         for sub_dungeon in cpy
         {
-            let colr = rand::thread_rng().gen_range(0..4);
+            let colr = sub_dung_lbl % colors.len();
 
             for y in sub_dungeon.coords.unwrap().1 .. sub_dungeon.coords.unwrap().3
             {
@@ -177,10 +184,11 @@ fn main()
    test.setRoot(rt);
 
    test.split(true, 0);
-   test.split(true, 1);
-   test.split(false, 2);
+   test.split(false, 1);
+//    test.split(false, 2);
+//    test.split(false, 3);
 
-   test.draw();
+   test.draw_sub_dungeons();
    
 
 }
