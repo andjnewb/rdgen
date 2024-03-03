@@ -11,15 +11,18 @@ use crossterm::{
 };
 use ptree::*;
 use rand::Rng;
-use std::{borrow::Cow, fs::File};
-use std::path::Path;
 use std::fmt::Display;
+use std::path::Path;
+use std::{borrow::Cow, fs::File};
 use std::{
     io::{self, Write},
     task::Poll,
     time::Duration,
 };
 use thiserror::Error;
+
+//use display_tree::*;
+
 struct Dungeon {
     tree: DungeonTree,
     homogeneity: f64, //Will be clamped between 0 and 1. Increases the variance for the splitting of sub-dungeons.
@@ -54,53 +57,10 @@ pub struct DungeonNode {
     right: Option<usize>,
     room: Option<(i32, i32, i32, i32)>,
 }
-#[derive(Clone, Debug, PartialEq)]
-struct DungeonNodeRef<'a> {
-    tree: &'a DungeonTree,
-    node_id: usize
-}
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct DungeonTree {
     nodes: Vec<Option<DungeonNode>>,
-}
-
-// impl TreeItem for DungeonNode
-// {
-//     type Child = Self;
-
-//     fn write_self<W: io::Write>(&self, f: &mut W, style: &Style) -> io::Result<()> {
-//         write!(f, "{:?}", self.coords)
-//     }
-
-//     fn children(&self) -> Cow<[Self::Child]> {
-        
-//     }
-// }
-
-impl<'a> TreeItem for DungeonNodeRef<'a> {
-    type Child = Self;
-
-    fn write_self<W: io::Write>(&self, f: &mut W, style: &Style) -> io::Result<()> {
-        write!(f, "{}", style.paint(self))
-    }
-
-    fn children(&self) -> Cow<[Self::Child]> {
-        todo!()
-    }
-    // stuff here
-}
-
-impl<'a> std::fmt::Display for DungeonNodeRef<'a> {
-    fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
-        if(self.tree.nodes.len() > 0)
-        {
-            write!(fmt, "Coords: {:?}", self.tree.nodes[0])
-        }
-        else {
-            write!(fmt, "None")
-        }
-    }
 }
 
 impl TreeItem for DungeonTree {
@@ -109,59 +69,55 @@ impl TreeItem for DungeonTree {
         write!(f, "{}", style.paint(self))
     }
     fn children(&self) -> Cow<[Self::Child]> {
+        let mut kids: Vec<usize> = Vec::new();
 
-        let left_child_tree = self.get_subtree(0, true);
-        let right_child_tree = self.get_subtree(0, false);
-        
-        //println!("{:?}", left_child_tree);
-        //println!("{:?}", right_child_tree);
-
-        if  (left_child_tree == None) && (right_child_tree != None) 
-        {
-            Cow::Owned(vec![right_child_tree.unwrap()])
+        if (self.nodes.len() <= 0) {
+            return Cow::from(vec![]);
         }
 
-        else if (left_child_tree != None) && (right_child_tree == None) 
-        {
-            Cow::Owned(vec![left_child_tree.unwrap()])
+        match self.get_children_idxs(self.nodes[0], &mut kids) {
+            Ok(_) => {}
+            _ => {}
         }
 
-        else if (left_child_tree == None) && (right_child_tree == None)   
-        {
-            Cow::Owned(vec![])
+        let child_nodes: Vec<&Option<DungeonNode>> = self
+            .nodes
+            .iter()
+            .filter(|node| kids.contains(&node.unwrap().node_id))
+            .collect();
+
+        let mut sub_tree: DungeonTree = DungeonTree::new(1);
+
+        for node in child_nodes {
+            sub_tree.nodes.push(node.clone());
+            sub_tree.nodes.push(node.clone());
         }
 
-        else {
-            Cow::Owned(vec![left_child_tree.unwrap(), right_child_tree.unwrap()])
-        }
-
-        
+        Cow::from(vec![sub_tree])
     }
-
-
 }
 
 impl std::fmt::Display for DungeonTree {
     fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
-        if(self.nodes.len() > 0)
-        {
+        if (self.nodes.len() > 0) {
             write!(fmt, "Coords: {:?}", self.nodes[0])
-        }
-        else {
+        } else {
             write!(fmt, "None")
         }
     }
 }
 
-impl DungeonNode{
-    pub fn new() -> DungeonNode
-    {
-        DungeonNode{ coords: None, left: None, right: None, room: None, node_id: 0 }
+impl DungeonNode {
+    pub fn new() -> DungeonNode {
+        DungeonNode {
+            coords: None,
+            left: None,
+            right: None,
+            room: None,
+            node_id: 0,
+        }
     }
-
-    
 }
-
 
 impl DungeonTree {
     //Return a empty tree with no nodes
@@ -203,8 +159,10 @@ impl DungeonTree {
                 continue;
             }
 
-            let sub_width = sub_dungeons.1.unwrap().coords.unwrap().2 - sub_dungeons.1.unwrap().coords.unwrap().0;
-            let sub_height = sub_dungeons.1.unwrap().coords.unwrap().3 - sub_dungeons.1.unwrap().coords.unwrap().1;
+            let sub_width = sub_dungeons.1.unwrap().coords.unwrap().2
+                - sub_dungeons.1.unwrap().coords.unwrap().0;
+            let sub_height = sub_dungeons.1.unwrap().coords.unwrap().3
+                - sub_dungeons.1.unwrap().coords.unwrap().1;
 
             if (sub_width <= 3 || sub_height <= 3) {
                 println!("Sub dungeon is too small!");
@@ -225,79 +183,182 @@ impl DungeonTree {
         Ok(())
     }
 
-    pub fn get_subtree(&self, node_idx: usize, left:bool) -> Option<DungeonTree>
-    {
-        if(self.nodes.len() > node_idx  && left)
-        {
-
-            let mut temp = self.clone();
-            temp.nodes[node_idx] = None;
-            temp.remove_at_idx((2 * node_idx + 2) as i32);
-
-            temp.nodes.retain(|n| n.is_some());
-
-            return Some(temp);
+    pub fn get_subtree(&self, node_idx: usize, left: bool) -> Option<DungeonTree> {
+        if node_idx >= self.nodes.len() {
+            return None;
         }
 
-        if(self.nodes.len() > node_idx  && !left)
-        {
+        let mut kids: Vec<usize> = Vec::new();
 
-            let mut temp = self.clone();
-            temp.nodes[node_idx] = None;
-            temp.remove_at_idx((2 * node_idx + 1) as i32);
+        match self.nodes[node_idx] {
+            Some(node) => match left {
+                true => match node.left {
+                    Some(left_child_idx) => {
+                        //kids.push(node_idx);
+                        kids.push(left_child_idx);
+                        match self.get_children_idxs(self.nodes[left_child_idx], &mut kids) {
+                            Ok(_) => {
+                                let mut subtree: DungeonTree = DungeonTree::new(1);
+                                for idx in kids
+                                {
+                                    subtree.nodes.push(self.nodes[idx]);
+                                }
+                                return Some(subtree);
+                            }
+                            _ => {}
+                        }
+                    }
+                    None => {
+                        return None;
+                    }
+                },
+                false => { match node.right {
+                    Some(right_child_idx) => {
+                        //kids.push(node_idx);
+                        kids.push(right_child_idx);
+                        match self.get_children_idxs(self.nodes[right_child_idx], &mut kids){
+                            Ok(_) =>{
+                                let mut subtree: DungeonTree = DungeonTree::new(1);
+                                for idx in kids
+                                {
+                                    subtree.nodes.push(self.nodes[idx]);
+                                }
+                                return Some(subtree);
+                            }
+                            _ => {}
+                        }
+                    }
+                    None => {return None;}
+                }
 
-            temp.nodes.retain(|n| n.is_some());
+                }
+            },
 
-            return Some(temp);
+            None => {
+                return None;
+            }
         }
+
+        // if (self.nodes.len() > node_idx && left) {
+        //     let mut temp = self.clone();
+        //     temp.nodes[node_idx] = None;
+        //     temp.remove_at_idx((2 * node_idx + 2) as i32);
+
+        //     //temp.nodes.retain(|n| n.is_some());
+
+        //     return Some(temp);
+        // }
+
+        // if (self.nodes.len() > node_idx && !left) {
+        //     let mut temp = self.clone();
+        //     temp.nodes[node_idx] = None;
+        //     temp.remove_at_idx((2 * node_idx + 1) as i32);
+
+        //     //temp.nodes.retain(|n| n.is_some());
+
+        //     return Some(temp);
+        // }
 
         None
     }
 
-    pub fn remove_at_idx(&mut self, node_idx: i32)
-    {
-        let mut stk: Vec<i32> = Vec::new();
-        let mut toRemove: Vec<i32> = Vec::new();
-
-
-        let mut curr:Option<i32> = Some(node_idx);
-
-        while(!stk.is_empty()) || ( curr != None)
-        {
-
-            if(curr != None)
-            {
-                stk.push(self.nodes[curr.unwrap() as usize].unwrap().node_id as i32);
-
-                if(self.nodes[curr.unwrap() as usize].unwrap().left == None)
-                {
-                    curr = None;
-                }
-                else {
-                    curr = Some(self.nodes[curr.unwrap() as usize].unwrap().left.unwrap() as i32);
-                }
-
-                
-            }
-
-            else {
-                curr = stk.last().copied();
-                stk.pop();
-                //print!("{}", self.nodes[curr.unwrap() as usize].unwrap().node_id);
-                toRemove.push(self.nodes[curr.unwrap() as usize].unwrap().node_id as i32);
-                if(self.nodes[curr.unwrap() as usize].unwrap().right == None)
-                {
-                    curr = None;
-                }
-                else {
-                    curr = Some(self.nodes[curr.unwrap() as usize].unwrap().right.unwrap() as i32);
-                }
-            }
-
+    pub fn get_children_idxs(
+        &self,
+        rt: Option<DungeonNode>,
+        child_idxs: &mut Vec<usize>,
+    ) -> Result<(), TreeError> {
+        if (rt == None) {
+            return Ok(());
         }
 
-        for idx in toRemove
-        {
+        if (rt.unwrap().left != None) {
+            child_idxs.push(rt.unwrap().left.unwrap());
+            self.get_children_idxs(self.nodes[rt.unwrap().left.unwrap()], child_idxs)?;
+        }
+
+        if (rt.unwrap().right != None) {
+            child_idxs.push(rt.unwrap().right.unwrap());
+            self.get_children_idxs(self.nodes[rt.unwrap().right.unwrap()], child_idxs)?;
+        }
+
+        Ok(())
+    }
+
+    pub fn remove_at_idx(&mut self, node_idx: i32) {
+        let mut stk: Vec<usize> = Vec::new();
+        let mut toRemove: Vec<i32> = Vec::new();
+
+        let mut curr: Option<usize> = Some(node_idx as usize);
+
+        while (!stk.is_empty()) || (curr != None) {
+            match curr {
+                Some(_) => {
+                    //println!("{:?}", curr.unwrap());
+                    match self.nodes[curr.unwrap() as usize] {
+                        Some(node) => {
+                            stk.push(node.node_id);
+
+                            match node.left {
+                                Some(left_child_idx) => curr = Some(left_child_idx),
+                                None => curr = None,
+                            };
+                        }
+                        None => {}
+                    };
+                }
+                None => {
+                    curr = stk.last().copied();
+                    stk.pop();
+
+                    match self.nodes[curr.unwrap() as usize] {
+                        Some(node) => {
+                            toRemove.push(node.node_id as i32);
+
+                            match node.right {
+                                Some(right_child_idx) => curr = Some(right_child_idx),
+                                None => {
+                                    curr = None;
+                                }
+                            }
+                        }
+                        None => {}
+                    }
+                }
+            };
+
+            // if(curr != None)
+            // {
+            //     if(curr.unwrap() < self.nodes.len() as i32 && self.nodes[curr.unwrap() as usize] != None)
+            //     {
+            //         stk.push(self.nodes[curr.unwrap() as usize].unwrap().node_id as i32 & self.nodes.len() as i32);
+            //     }
+
+            //     if(self.nodes[curr.unwrap() as usize].unwrap().left == None)
+            //     {
+            //         curr = None;
+            //     }
+            //     else {
+            //         curr = Some(self.nodes[curr.unwrap() as usize].unwrap().left.unwrap() as i32);
+            //     }
+
+            // }
+
+            // else {
+            //     curr = stk.last().copied();
+            //     stk.pop();
+            //     //print!("{}", self.nodes[curr.unwrap() as usize].unwrap().node_id);
+            //     toRemove.push(self.nodes[curr.unwrap() as usize].unwrap().node_id as i32);
+            //     if(self.nodes[curr.unwrap() as usize].unwrap().right == None)
+            //     {
+            //         curr = None;
+            //     }
+            //     else {
+            //         curr = Some(self.nodes[curr.unwrap() as usize].unwrap().right.unwrap() as i32);
+            //     }
+            // }
+        }
+
+        for idx in toRemove {
             self.nodes[idx as usize] = None;
         }
     }
@@ -322,9 +383,15 @@ impl DungeonTree {
                 node.as_mut().unwrap().left = Some(2 * idx + 1);
                 node.as_mut().unwrap().right = Some(2 * idx + 2);
                 if vert {
-                    split_range = (node.unwrap().coords.unwrap().0, node.unwrap().coords.unwrap().2)
+                    split_range = (
+                        node.unwrap().coords.unwrap().0,
+                        node.unwrap().coords.unwrap().2,
+                    )
                 } else {
-                    split_range = (node.unwrap().coords.unwrap().1, node.unwrap().coords.unwrap().3)
+                    split_range = (
+                        node.unwrap().coords.unwrap().1,
+                        node.unwrap().coords.unwrap().3,
+                    )
                 }
             }
             None => return Err(TreeError::IndexError),
@@ -334,7 +401,8 @@ impl DungeonTree {
         split_pos = (split_range.0 + split_range.1) / 2;
         split_pos = (split_pos as f32 * rand::thread_rng().gen_range(0.35..0.75)) as i32;
 
-        self.nodes.resize(self.nodes.len() + 2, Some(root_node.clone()));
+        self.nodes
+            .resize(self.nodes.len() + 2, Some(root_node.clone()));
         if vert {
             self.nodes[2 * root_idx + 1] = Some(DungeonNode {
                 coords: Some((
@@ -367,7 +435,6 @@ impl DungeonTree {
                     root_node.coords.unwrap().1 + 1,
                     root_node.coords.unwrap().2 - 1,
                     split_pos,
-                    
                 )),
                 left: None,
                 right: None,
@@ -384,18 +451,18 @@ impl DungeonTree {
                 left: None,
                 right: None,
                 room: None,
-                node_id: 2 * root_idx + 1,
+                node_id: 2 * root_idx + 2,
             });
         }
-
-
 
         Ok(())
     }
 
     pub fn draw_to_file(&mut self) {
-        let width = self.nodes[0].unwrap().coords.unwrap().2 - self.nodes[0].unwrap().coords.unwrap().0;
-        let height = self.nodes[0].unwrap().coords.unwrap().3 - self.nodes[0].unwrap().coords.unwrap().1;
+        let width =
+            self.nodes[0].unwrap().coords.unwrap().2 - self.nodes[0].unwrap().coords.unwrap().0;
+        let height =
+            self.nodes[0].unwrap().coords.unwrap().3 - self.nodes[0].unwrap().coords.unwrap().1;
 
         let path = Path::new("dung.out");
         let display = path.display();
@@ -460,7 +527,6 @@ impl DungeonTree {
         file.write(buf.as_str().as_bytes());
     }
 
-
     pub fn draw_sub_dungeons(&self) {
         let mut stdout = io::stdout();
 
@@ -485,9 +551,13 @@ impl DungeonTree {
         for sub_dungeon in cpy {
             let colr = sub_dung_lbl % colors.len();
 
-            for y in sub_dungeon.unwrap().coords.unwrap().1..=sub_dungeon.unwrap().coords.unwrap().3 {
-                for x in sub_dungeon.unwrap().coords.unwrap().0..=sub_dungeon.unwrap().coords.unwrap().2 {
-                    if (y == sub_dungeon.unwrap().coords.unwrap().1 || y == sub_dungeon.unwrap().coords.unwrap().3)
+            for y in sub_dungeon.unwrap().coords.unwrap().1..=sub_dungeon.unwrap().coords.unwrap().3
+            {
+                for x in
+                    sub_dungeon.unwrap().coords.unwrap().0..=sub_dungeon.unwrap().coords.unwrap().2
+                {
+                    if (y == sub_dungeon.unwrap().coords.unwrap().1
+                        || y == sub_dungeon.unwrap().coords.unwrap().3)
                         || (x == sub_dungeon.unwrap().coords.unwrap().0
                             || x == sub_dungeon.unwrap().coords.unwrap().2)
                     {
@@ -499,8 +569,12 @@ impl DungeonTree {
                 }
             }
 
-            let midX = (sub_dungeon.unwrap().coords.unwrap().0 + sub_dungeon.unwrap().coords.unwrap().2) / 2;
-            let midY = (sub_dungeon.unwrap().coords.unwrap().1 + sub_dungeon.unwrap().coords.unwrap().3) / 2;
+            let midX = (sub_dungeon.unwrap().coords.unwrap().0
+                + sub_dungeon.unwrap().coords.unwrap().2)
+                / 2;
+            let midY = (sub_dungeon.unwrap().coords.unwrap().1
+                + sub_dungeon.unwrap().coords.unwrap().3)
+                / 2;
             //Print node name
             // let _ = stdout
             //                 .queue(cursor::MoveTo(midX.try_into().unwrap(),midY.try_into().unwrap())).unwrap()
@@ -537,7 +611,8 @@ impl DungeonTree {
             }
 
             for y in sub_dungeon.unwrap().room.unwrap().1..=sub_dungeon.unwrap().room.unwrap().3 {
-                for x in sub_dungeon.unwrap().room.unwrap().0..=sub_dungeon.unwrap().room.unwrap().2 {
+                for x in sub_dungeon.unwrap().room.unwrap().0..=sub_dungeon.unwrap().room.unwrap().2
+                {
                     let _ = stdout
                         .queue(cursor::MoveTo(x.try_into().unwrap(), y.try_into().unwrap()))
                         .unwrap()
@@ -545,8 +620,10 @@ impl DungeonTree {
                 }
             }
 
-            let midX = (sub_dungeon.unwrap().room.unwrap().0 + sub_dungeon.unwrap().room.unwrap().2) / 2;
-            let midY = (sub_dungeon.unwrap().room.unwrap().1 + sub_dungeon.unwrap().room.unwrap().3) / 2;
+            let midX =
+                (sub_dungeon.unwrap().room.unwrap().0 + sub_dungeon.unwrap().room.unwrap().2) / 2;
+            let midY =
+                (sub_dungeon.unwrap().room.unwrap().1 + sub_dungeon.unwrap().room.unwrap().3) / 2;
             //Print node name
             let _ = stdout
                 .queue(cursor::MoveTo(
@@ -560,8 +637,7 @@ impl DungeonTree {
         stdout.flush().unwrap();
     }
 
-    fn print_tree_console(&self) 
-    {
+    fn print_tree_console(&self) {
         print_tree(self);
     }
 }
@@ -581,23 +657,32 @@ fn main() {
     test.setRoot(rt);
 
     test.split_sub_dungeon(true, 0);
-    //test.split_sub_dungeon(false, 1);
+    test.split_sub_dungeon(false, 1);
+    test.split_sub_dungeon(false, 2);
+    //test.draw_sub_dungeons();
     //test.split_sub_dungeon(false, 2);
     //println!("{:?}", test.nodes);
-    //test.remove_at_idx(1);
-    //println!("{:?}", test.nodes);
+    //test.remove_at_idx(2);
+    // println!("left: {:?\n} ", test.get_subtree(0, true).unwrap().nodes);
+    // println!("right: {:?} ", test.get_subtree(0, false).unwrap().nodes);
     //test.build_rooms((4, 4, 4, 4));
     //test.draw_to_file();
 
     // let thing = test.get_subtree(0, false);
     // println!("{:?}", thing);
 
-    test.print_tree_console();
+    let subleft = test.get_subtree(0, true);
+    let subright = test.get_subtree(0, false);
+    println!("{:?}\n{:?}", subleft.unwrap().nodes.len(), subright.unwrap().nodes.len());
+    //test.get_children_idxs(Some(test.nodes[2].unwrap()), &mut kids);
+    
 
-    // for node in test.nodes.iter() {
-    //     //println!("Sub-Dungeon coords{:?}", node.coords);
-    //     println!("Room in sub-dungeon coords:{:?}", node.room);
-    //     println!();
+    //println!("{:?}", kids);
+
+    // for (idx, node) in test.nodes.iter().enumerate()
+    // {
+    //     println!("left: {:?} ", test.get_subtree(0, true).unwrap().nodes[idx]);
+    //     println!("right: {:?} ", test.get_subtree(0, false).unwrap().nodes[idx]);
     // }
 
     //    loop {
