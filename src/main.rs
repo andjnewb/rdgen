@@ -69,38 +69,32 @@ impl TreeItem for DungeonTree {
         write!(f, "{}", style.paint(self))
     }
     fn children(&self) -> Cow<[Self::Child]> {
-        let mut kids: Vec<usize> = Vec::new();
+        let left_subtree = self.get_subtree(0, true);
+        let right_subtree = self.get_subtree(0, false);
 
-        if (self.nodes.len() <= 0) {
-            return Cow::from(vec![]);
+        if(left_subtree != None) && (right_subtree != None)
+        {
+            return Cow::from(vec![left_subtree.unwrap(), right_subtree.unwrap()]);
         }
 
-        match self.get_children_idxs(self.nodes[0], &mut kids) {
-            Ok(_) => {}
-            _ => {}
+        if(left_subtree != None) && (right_subtree == None)
+        {
+            return Cow::from(vec![left_subtree.unwrap()]);
         }
 
-        let child_nodes: Vec<&Option<DungeonNode>> = self
-            .nodes
-            .iter()
-            .filter(|node| kids.contains(&node.unwrap().node_id))
-            .collect();
-
-        let mut sub_tree: DungeonTree = DungeonTree::new(1);
-
-        for node in child_nodes {
-            sub_tree.nodes.push(node.clone());
-            sub_tree.nodes.push(node.clone());
+        if(left_subtree == None) && (right_subtree != None)
+        {
+            return Cow::from(vec![right_subtree.unwrap()]);
         }
 
-        Cow::from(vec![sub_tree])
+        Cow::from(vec![])
     }
 }
 
 impl std::fmt::Display for DungeonTree {
     fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
         if (self.nodes.len() > 0) {
-            write!(fmt, "Coords: {:?}", self.nodes[0])
+            write!(fmt, "Coords: {:?}", self.nodes[0].unwrap().coords)
         } else {
             write!(fmt, "None")
         }
@@ -199,10 +193,33 @@ impl DungeonTree {
                         match self.get_children_idxs(self.nodes[left_child_idx], &mut kids) {
                             Ok(_) => {
                                 let mut subtree: DungeonTree = DungeonTree::new(1);
+
+                                let mut new_node_id = 0;
+                                let mut new_child_id = 1;
                                 for idx in kids
                                 {
-                                    subtree.nodes.push(self.nodes[idx]);
+                                    let mut node: DungeonNode = self.nodes[idx].unwrap().clone();
+                                    node.node_id = new_node_id;
+
+                                    if(node.left != None)
+                                    {
+                                        node.left = Some(new_child_id);
+                                        new_child_id += 1;
+                                    }
+
+                                    if(node.right != None)
+                                    {
+                                        node.right = Some(new_child_id);
+                                        new_child_id += 1;
+                                    }
+
+                                    subtree.nodes.push(Some(node));
+
+                                    new_node_id += 1;
+
                                 }
+
+
                                 return Some(subtree);
                             }
                             _ => {}
@@ -217,12 +234,34 @@ impl DungeonTree {
                         //kids.push(node_idx);
                         kids.push(right_child_idx);
                         match self.get_children_idxs(self.nodes[right_child_idx], &mut kids){
-                            Ok(_) =>{
+                            Ok(_) => {
                                 let mut subtree: DungeonTree = DungeonTree::new(1);
+
+                                let mut new_node_id = 0;
+                                let mut new_child_id = 1;
                                 for idx in kids
                                 {
-                                    subtree.nodes.push(self.nodes[idx]);
+                                    let mut node: DungeonNode = self.nodes[idx].unwrap().clone();
+                                    node.node_id = new_node_id;
+
+                                    if(node.left != None)
+                                    {
+                                        node.left = Some(new_child_id);
+                                        new_child_id += 1;
+                                    }
+
+                                    if(node.right != None)
+                                    {
+                                        node.right = Some(new_child_id);
+                                        new_child_id += 1;
+                                    }
+
+                                    subtree.nodes.push(Some(node));
+
+                                    new_node_id += 1;
+
                                 }
+
                                 return Some(subtree);
                             }
                             _ => {}
@@ -659,11 +698,28 @@ fn main() {
     test.split_sub_dungeon(true, 0);
     test.split_sub_dungeon(false, 1);
     test.split_sub_dungeon(false, 2);
+    test.split_sub_dungeon(false, 3);
     //test.draw_sub_dungeons();
     //test.split_sub_dungeon(false, 2);
-    //println!("{:?}", test.nodes);
+    println!("{:?}", test.nodes.len());
     //test.remove_at_idx(2);
-    // println!("left: {:?\n} ", test.get_subtree(0, true).unwrap().nodes);
+
+    for node in test.get_subtree(0, false).unwrap().nodes
+    {
+        print!("id: {:?} ", node.unwrap().node_id);
+
+        if(node.unwrap().left != None)
+        {
+            print!("left: {:?}", node.unwrap().left.unwrap());
+        }
+
+        if(node.unwrap().right != None)
+        {
+            print!("right: {:?}", node.unwrap().right.unwrap());
+        }
+        println!();
+    }
+    //println!("left: {:?\n} ", test.get_subtree(0, true).unwrap().nodes);
     // println!("right: {:?} ", test.get_subtree(0, false).unwrap().nodes);
     //test.build_rooms((4, 4, 4, 4));
     //test.draw_to_file();
@@ -671,11 +727,11 @@ fn main() {
     // let thing = test.get_subtree(0, false);
     // println!("{:?}", thing);
 
-    let subleft = test.get_subtree(0, true);
-    let subright = test.get_subtree(0, false);
-    println!("{:?}\n{:?}", subleft.unwrap().nodes.len(), subright.unwrap().nodes.len());
+    // let subleft = test.get_subtree(0, true);
+    // let subright = test.get_subtree(0, false);
+    // println!("{:?}\n{:?}", subleft.unwrap().nodes.len(), subright.unwrap().nodes.len());
     //test.get_children_idxs(Some(test.nodes[2].unwrap()), &mut kids);
-    
+    test.print_tree_console();
 
     //println!("{:?}", kids);
 
