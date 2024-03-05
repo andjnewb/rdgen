@@ -72,18 +72,15 @@ impl TreeItem for DungeonTree {
         let left_subtree = self.get_subtree(0, true);
         let right_subtree = self.get_subtree(0, false);
 
-        if(left_subtree != None) && (right_subtree != None)
-        {
+        if (left_subtree != None) && (right_subtree != None) {
             return Cow::from(vec![left_subtree.unwrap(), right_subtree.unwrap()]);
         }
 
-        if(left_subtree != None) && (right_subtree == None)
-        {
+        if (left_subtree != None) && (right_subtree == None) {
             return Cow::from(vec![left_subtree.unwrap()]);
         }
 
-        if(left_subtree == None) && (right_subtree != None)
-        {
+        if (left_subtree == None) && (right_subtree != None) {
             return Cow::from(vec![right_subtree.unwrap()]);
         }
 
@@ -94,7 +91,12 @@ impl TreeItem for DungeonTree {
 impl std::fmt::Display for DungeonTree {
     fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
         if (self.nodes.len() > 0) {
-            write!(fmt, "Coords: {:?}", self.nodes[0].unwrap().coords)
+            write!(fmt, "Coords: {:?}", self.nodes[0].unwrap().coords)?;
+            if (self.nodes[0].unwrap().room != None) {
+                write!(fmt, "Room: {:?}", self.nodes[0].unwrap().room.unwrap())
+            } else {
+                write!(fmt, "Room: {:?}", None::<DungeonNode>)
+            }
         } else {
             write!(fmt, "None")
         }
@@ -147,32 +149,40 @@ impl DungeonTree {
         let max_x_offset = offsets.2;
         let max_y_offset = offsets.3;
 
-        for sub_dungeons in self.nodes.iter_mut().enumerate() {
-            if (sub_dungeons.0 == 0) {
-                sub_dungeons.1.unwrap().room = None;
-                continue;
+        //Only build rooms for leaves?
+        let mut itr: Vec<_> = self.nodes
+        .iter_mut()
+        .filter(|node| node.is_some())
+        .filter(|node| (node.unwrap().left.is_none()) && (node.unwrap().right.is_none())).collect();
+
+        for sub_dungeons in itr.iter_mut().enumerate() {
+            // if (sub_dungeons.0 == 0) {
+            //     sub_dungeons.1.unwrap().room = None;
+            //     continue;
+            // }
+
+            if (**sub_dungeons.1 != None) {
+                let sub_width = sub_dungeons.1.unwrap().coords.unwrap().2
+                    - sub_dungeons.1.unwrap().coords.unwrap().0;
+                let sub_height = sub_dungeons.1.unwrap().coords.unwrap().3
+                    - sub_dungeons.1.unwrap().coords.unwrap().1;
+
+                if (sub_width <= 3 || sub_height <= 3) {
+                    println!("Sub dungeon is too small!");
+                    sub_dungeons.1.unwrap().room = None;
+                    continue;
+                }
+
+                //Simplistic, randomize later
+                let dims = (
+                    sub_dungeons.1.unwrap().coords.unwrap().0 + min_x_offset,
+                    sub_dungeons.1.unwrap().coords.unwrap().1 + min_y_offset,
+                    sub_dungeons.1.unwrap().coords.unwrap().2 - max_x_offset,
+                    sub_dungeons.1.unwrap().coords.unwrap().3 - max_y_offset,
+                );
+
+                sub_dungeons.1.as_mut().unwrap().room = Some(dims);
             }
-
-            let sub_width = sub_dungeons.1.unwrap().coords.unwrap().2
-                - sub_dungeons.1.unwrap().coords.unwrap().0;
-            let sub_height = sub_dungeons.1.unwrap().coords.unwrap().3
-                - sub_dungeons.1.unwrap().coords.unwrap().1;
-
-            if (sub_width <= 3 || sub_height <= 3) {
-                println!("Sub dungeon is too small!");
-                sub_dungeons.1.unwrap().room = None;
-                continue;
-            }
-
-            //Simplistic, randomize later
-            let dims = (
-                sub_dungeons.1.unwrap().coords.unwrap().0 + min_x_offset,
-                sub_dungeons.1.unwrap().coords.unwrap().1 + min_y_offset,
-                sub_dungeons.1.unwrap().coords.unwrap().2 - max_x_offset,
-                sub_dungeons.1.unwrap().coords.unwrap().3 - max_y_offset,
-            );
-
-            sub_dungeons.1.unwrap().room = Some(dims);
         }
         Ok(())
     }
@@ -196,19 +206,16 @@ impl DungeonTree {
 
                                 let mut new_node_id = 0;
                                 let mut new_child_id = 1;
-                                for idx in kids
-                                {
+                                for idx in kids {
                                     let mut node: DungeonNode = self.nodes[idx].unwrap().clone();
                                     node.node_id = new_node_id;
 
-                                    if(node.left != None)
-                                    {
+                                    if (node.left != None) {
                                         node.left = Some(new_child_id);
                                         new_child_id += 1;
                                     }
 
-                                    if(node.right != None)
-                                    {
+                                    if (node.right != None) {
                                         node.right = Some(new_child_id);
                                         new_child_id += 1;
                                     }
@@ -216,9 +223,7 @@ impl DungeonTree {
                                     subtree.nodes.push(Some(node));
 
                                     new_node_id += 1;
-
                                 }
-
 
                                 return Some(subtree);
                             }
@@ -229,47 +234,46 @@ impl DungeonTree {
                         return None;
                     }
                 },
-                false => { match node.right {
-                    Some(right_child_idx) => {
-                        //kids.push(node_idx);
-                        kids.push(right_child_idx);
-                        match self.get_children_idxs(self.nodes[right_child_idx], &mut kids){
-                            Ok(_) => {
-                                let mut subtree: DungeonTree = DungeonTree::new(1);
+                false => {
+                    match node.right {
+                        Some(right_child_idx) => {
+                            //kids.push(node_idx);
+                            kids.push(right_child_idx);
+                            match self.get_children_idxs(self.nodes[right_child_idx], &mut kids) {
+                                Ok(_) => {
+                                    let mut subtree: DungeonTree = DungeonTree::new(1);
 
-                                let mut new_node_id = 0;
-                                let mut new_child_id = 1;
-                                for idx in kids
-                                {
-                                    let mut node: DungeonNode = self.nodes[idx].unwrap().clone();
-                                    node.node_id = new_node_id;
+                                    let mut new_node_id = 0;
+                                    let mut new_child_id = 1;
+                                    for idx in kids {
+                                        let mut node: DungeonNode =
+                                            self.nodes[idx].unwrap().clone();
+                                        node.node_id = new_node_id;
 
-                                    if(node.left != None)
-                                    {
-                                        node.left = Some(new_child_id);
-                                        new_child_id += 1;
+                                        if (node.left != None) {
+                                            node.left = Some(new_child_id);
+                                            new_child_id += 1;
+                                        }
+
+                                        if (node.right != None) {
+                                            node.right = Some(new_child_id);
+                                            new_child_id += 1;
+                                        }
+
+                                        subtree.nodes.push(Some(node));
+
+                                        new_node_id += 1;
                                     }
 
-                                    if(node.right != None)
-                                    {
-                                        node.right = Some(new_child_id);
-                                        new_child_id += 1;
-                                    }
-
-                                    subtree.nodes.push(Some(node));
-
-                                    new_node_id += 1;
-
+                                    return Some(subtree);
                                 }
-
-                                return Some(subtree);
+                                _ => {}
                             }
-                            _ => {}
+                        }
+                        None => {
+                            return None;
                         }
                     }
-                    None => {return None;}
-                }
-
                 }
             },
 
@@ -277,26 +281,6 @@ impl DungeonTree {
                 return None;
             }
         }
-
-        // if (self.nodes.len() > node_idx && left) {
-        //     let mut temp = self.clone();
-        //     temp.nodes[node_idx] = None;
-        //     temp.remove_at_idx((2 * node_idx + 2) as i32);
-
-        //     //temp.nodes.retain(|n| n.is_some());
-
-        //     return Some(temp);
-        // }
-
-        // if (self.nodes.len() > node_idx && !left) {
-        //     let mut temp = self.clone();
-        //     temp.nodes[node_idx] = None;
-        //     temp.remove_at_idx((2 * node_idx + 1) as i32);
-
-        //     //temp.nodes.retain(|n| n.is_some());
-
-        //     return Some(temp);
-        // }
 
         None
     }
@@ -440,8 +424,7 @@ impl DungeonTree {
         split_pos = (split_range.0 + split_range.1) / 2;
         split_pos = (split_pos as f32 * rand::thread_rng().gen_range(0.35..0.75)) as i32;
 
-        self.nodes
-            .resize(self.nodes.len() + 2, Some(root_node.clone()));
+        self.nodes.resize(self.nodes.len() + 3, None);
         if vert {
             self.nodes[2 * root_idx + 1] = Some(DungeonNode {
                 coords: Some((
@@ -637,9 +620,10 @@ impl DungeonTree {
 
         //Skip drawing the base
         let mut cpy = self.nodes.clone();
-        //cpy.remove(0);
+        
+        cpy.retain(|c| *c != None);
 
-        //stdout.execute(terminal::Clear(terminal::ClearType::All)).unwrap();
+        stdout.execute(terminal::Clear(terminal::ClearType::All)).unwrap();
 
         let mut sub_dung_lbl = 0;
         for sub_dungeon in cpy {
@@ -670,7 +654,7 @@ impl DungeonTree {
                     midY.try_into().unwrap(),
                 ))
                 .unwrap()
-                .queue(style::Print(sub_dung_lbl));
+                .queue(style::Print(sub_dungeon.unwrap().node_id));
             sub_dung_lbl += 1;
         }
         stdout.flush().unwrap();
@@ -682,11 +666,11 @@ impl DungeonTree {
 }
 
 fn main() {
-    //execute!(io::stdout(), EnterAlternateScreen);
+        execute!(io::stdout(), EnterAlternateScreen);
     let mut test = DungeonTree::new(4);
 
     let rt: DungeonNode = DungeonNode {
-        coords: Some((0, 0, 128, 128)),
+        coords: Some((0, 0, 64, 64)),
         left: None,
         right: None,
         room: None,
@@ -698,71 +682,33 @@ fn main() {
     test.split_sub_dungeon(true, 0);
     test.split_sub_dungeon(false, 1);
     test.split_sub_dungeon(false, 2);
-    test.split_sub_dungeon(false, 3);
-    //test.draw_sub_dungeons();
-    //test.split_sub_dungeon(false, 2);
-    println!("{:?}", test.nodes.len());
-    //test.remove_at_idx(2);
+    test.build_rooms((2, 2, 2, 2));
+    test.draw_rooms();
 
-    for node in test.get_subtree(0, false).unwrap().nodes
-    {
-        print!("id: {:?} ", node.unwrap().node_id);
+    //test.print_tree_console();
 
-        if(node.unwrap().left != None)
-        {
-            print!("left: {:?}", node.unwrap().left.unwrap());
+       loop {
+        if poll(Duration::from_millis(100)).unwrap() {
+            // It's guaranteed that `read` won't block, because `poll` returned
+            // `Ok(true)`.
+             let ev: crossterm::event::Event = crossterm::event::read().unwrap();
+             let mut tt: crossterm::event::KeyCode = crossterm::event::KeyCode::Enter;
+
+             match ev
+             {
+                Event::Key(key) => tt = key.code,
+                _ => (),
+             }
+
+             if(tt == crossterm::event::KeyCode::Char('c'))
+             {
+                break;
+             }
+
+        } else {
+            // Timeout expired, no `Event` is available
         }
-
-        if(node.unwrap().right != None)
-        {
-            print!("right: {:?}", node.unwrap().right.unwrap());
-        }
-        println!();
     }
-    //println!("left: {:?\n} ", test.get_subtree(0, true).unwrap().nodes);
-    // println!("right: {:?} ", test.get_subtree(0, false).unwrap().nodes);
-    //test.build_rooms((4, 4, 4, 4));
-    //test.draw_to_file();
 
-    // let thing = test.get_subtree(0, false);
-    // println!("{:?}", thing);
-
-    // let subleft = test.get_subtree(0, true);
-    // let subright = test.get_subtree(0, false);
-    // println!("{:?}\n{:?}", subleft.unwrap().nodes.len(), subright.unwrap().nodes.len());
-    //test.get_children_idxs(Some(test.nodes[2].unwrap()), &mut kids);
-    test.print_tree_console();
-
-    //println!("{:?}", kids);
-
-    // for (idx, node) in test.nodes.iter().enumerate()
-    // {
-    //     println!("left: {:?} ", test.get_subtree(0, true).unwrap().nodes[idx]);
-    //     println!("right: {:?} ", test.get_subtree(0, false).unwrap().nodes[idx]);
-    // }
-
-    //    loop {
-    //     if poll(Duration::from_millis(100)).unwrap() {
-    //         // It's guaranteed that `read` won't block, because `poll` returned
-    //         // `Ok(true)`.
-    //          let ev: crossterm::event::Event = crossterm::event::read().unwrap();
-    //          let mut tt: crossterm::event::KeyCode = crossterm::event::KeyCode::Enter;
-
-    //          match ev
-    //          {
-    //             Event::Key(key) => tt = key.code,
-    //             _ => (),
-    //          }
-
-    //          if(tt == crossterm::event::KeyCode::Char('c'))
-    //          {
-    //             break;
-    //          }
-
-    //     } else {
-    //         // Timeout expired, no `Event` is available
-    //     }
-    // }
-
-    //    execute!(io::stdout(), LeaveAlternateScreen).unwrap();
+       execute!(io::stdout(), LeaveAlternateScreen).unwrap();
 }
